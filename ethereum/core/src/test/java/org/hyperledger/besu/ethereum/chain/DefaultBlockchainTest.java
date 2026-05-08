@@ -1012,7 +1012,52 @@ public class DefaultBlockchainTest {
 
     assertThat(blockchain.getTotalDifficultyCache().get().size()).isEqualTo(1);
     assertThat(blockchain.getTotalDifficultyCache().get().getIfPresent(newBlock.getHash()))
-        .isEqualTo(newBlock.getHeader().getDifficulty());
+        .isEqualTo(
+            genesisBlock.getHeader().getDifficulty().add(newBlock.getHeader().getDifficulty()));
+  }
+
+  @Test
+  public void doesNotPersistTotalDifficultyForZeroDifficultyPostGenesisBlocks() {
+    final BlockDataGenerator gen = new BlockDataGenerator();
+    final KeyValueStorage kvStore = new InMemoryKeyValueStorage();
+    final KeyValueStorage kvStoreVariables = new InMemoryKeyValueStorage();
+    final BlockchainStorage storage = createStorage(kvStore, kvStoreVariables);
+    final Block genesisBlock = gen.genesisBlock();
+    final DefaultBlockchain blockchain =
+        (DefaultBlockchain)
+            DefaultBlockchain.createMutable(
+                genesisBlock, storage, new NoOpMetricsSystem(), 0, "/data/test");
+
+    final Block firstPosBlock =
+        gen.block(
+            new BlockDataGenerator.BlockOptions()
+                .setBlockNumber(1L)
+                .setParentHash(genesisBlock.getHash())
+                .setDifficulty(Difficulty.ZERO));
+    final Block secondPosBlock =
+        gen.block(
+            new BlockDataGenerator.BlockOptions()
+                .setBlockNumber(2L)
+                .setParentHash(firstPosBlock.getHash())
+                .setDifficulty(Difficulty.ZERO));
+
+    blockchain.appendBlock(firstPosBlock, gen.receipts(firstPosBlock));
+    blockchain.appendBlock(secondPosBlock, gen.receipts(secondPosBlock));
+
+    final Difficulty genesisTotalDifficulty = genesisBlock.getHeader().getDifficulty();
+    assertThat(storage.getTotalDifficulty(firstPosBlock.getHash())).isEmpty();
+    assertThat(storage.getTotalDifficulty(secondPosBlock.getHash())).isEmpty();
+    assertThat(blockchain.getTotalDifficultyByHash(firstPosBlock.getHash()))
+        .contains(genesisTotalDifficulty);
+    assertThat(blockchain.getTotalDifficultyByHash(secondPosBlock.getHash()))
+        .contains(genesisTotalDifficulty);
+    assertThat(blockchain.getChainHead().getTotalDifficulty()).isEqualTo(genesisTotalDifficulty);
+
+    final Blockchain reloadedBlockchain =
+        DefaultBlockchain.create(storage, new NoOpMetricsSystem(), 0);
+    assertThat(reloadedBlockchain.getChainHeadHash()).isEqualTo(secondPosBlock.getHash());
+    assertThat(reloadedBlockchain.getChainHead().getTotalDifficulty())
+        .isEqualTo(genesisTotalDifficulty);
   }
 
   @Test

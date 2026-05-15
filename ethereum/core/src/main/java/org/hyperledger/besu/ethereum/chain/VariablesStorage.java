@@ -17,6 +17,7 @@ package org.hyperledger.besu.ethereum.chain;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.hyperledger.besu.datatypes.Hash;
+import org.hyperledger.besu.ethereum.core.Difficulty;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -29,6 +30,7 @@ public interface VariablesStorage {
     FORK_HEADS("forkHeads"),
     FINALIZED_BLOCK_HASH("finalizedBlockHash"),
     SAFE_BLOCK_HASH("safeBlockHash"),
+    CHAIN_HEAD_TOTAL_DIFFICULTY("chainHeadTotalDifficulty"),
     SEQ_NO_STORE("local-enr-seqno"),
     GENESIS_STATE_HASH("genesisStateHash");
 
@@ -64,6 +66,8 @@ public interface VariablesStorage {
 
   Optional<Hash> getSafeBlock();
 
+  Optional<Difficulty> getChainHeadTotalDifficulty();
+
   Optional<Bytes> getLocalEnrSeqno();
 
   Optional<Hash> getGenesisStateHash();
@@ -79,6 +83,8 @@ public interface VariablesStorage {
     void setFinalized(Hash blockHash);
 
     void setSafeBlock(Hash blockHash);
+
+    void setChainHeadTotalDifficulty(Difficulty totalDifficulty);
 
     void setLocalEnrSeqno(Bytes nodeRecord);
 

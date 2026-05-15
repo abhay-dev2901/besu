@@ -15,6 +15,7 @@
 package org.hyperledger.besu.ethereum.storage.keyvalue;
 
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.CHAIN_HEAD_HASH;
+import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.CHAIN_HEAD_TOTAL_DIFFICULTY;
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.FINALIZED_BLOCK_HASH;
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.FORK_HEADS;
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.SAFE_BLOCK_HASH;
@@ -22,6 +23,7 @@ import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.SEQ_NO_S
 
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.chain.VariablesStorage;
+import org.hyperledger.besu.ethereum.core.Difficulty;
 import org.hyperledger.besu.ethereum.rlp.RLP;
 import org.hyperledger.besu.plugin.services.storage.KeyValueStorage;
 import org.hyperledger.besu.plugin.services.storage.KeyValueStorageTransaction;
@@ -60,6 +62,11 @@ public class VariablesKeyValueStorage implements VariablesStorage {
   @Override
   public Optional<Hash> getSafeBlock() {
     return getVariable(SAFE_BLOCK_HASH).map(this::bytesToHash);
+  }
+
+  @Override
+  public Optional<Difficulty> getChainHeadTotalDifficulty() {
+    return getVariable(CHAIN_HEAD_TOTAL_DIFFICULTY).map(b -> Difficulty.wrap(Bytes32.wrap(b, 0)));
   }
 
   @Override
@@ -117,6 +124,11 @@ public class VariablesKeyValueStorage implements VariablesStorage {
     }
 
     @Override
+    public void setChainHeadTotalDifficulty(final Difficulty totalDifficulty) {
+      setVariable(CHAIN_HEAD_TOTAL_DIFFICULTY, totalDifficulty);
+    }
+
+    @Override
     public void setLocalEnrSeqno(final Bytes nodeRecord) {
       setVariable(SEQ_NO_STORE, nodeRecord);
     }
@@ -131,6 +143,7 @@ public class VariablesKeyValueStorage implements VariablesStorage {
       removeVariable(CHAIN_HEAD_HASH);
       removeVariable(FINALIZED_BLOCK_HASH);
       removeVariable(SAFE_BLOCK_HASH);
+      removeVariable(CHAIN_HEAD_TOTAL_DIFFICULTY);
       removeVariable(FORK_HEADS);
       removeVariable(SEQ_NO_STORE);
     }

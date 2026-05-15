@@ -1027,6 +1027,7 @@ public class DefaultBlockchainTest {
         (DefaultBlockchain)
             DefaultBlockchain.createMutable(
                 genesisBlock, storage, new NoOpMetricsSystem(), 0, "/data/test");
+    blockchain.setPostMerge(true);
 
     final Block firstPosBlock =
         gen.block(
@@ -1052,12 +1053,38 @@ public class DefaultBlockchainTest {
     assertThat(blockchain.getTotalDifficultyByHash(secondPosBlock.getHash()))
         .contains(genesisTotalDifficulty);
     assertThat(blockchain.getChainHead().getTotalDifficulty()).isEqualTo(genesisTotalDifficulty);
+    assertThat(storage.getChainHeadTotalDifficulty()).contains(genesisTotalDifficulty);
 
     final Blockchain reloadedBlockchain =
         DefaultBlockchain.create(storage, new NoOpMetricsSystem(), 0);
     assertThat(reloadedBlockchain.getChainHeadHash()).isEqualTo(secondPosBlock.getHash());
     assertThat(reloadedBlockchain.getChainHead().getTotalDifficulty())
         .isEqualTo(genesisTotalDifficulty);
+  }
+
+  @Test
+  public void persistsTotalDifficultyForZeroDifficultyBlocksBeforeMerge() {
+    final BlockDataGenerator gen = new BlockDataGenerator();
+    final KeyValueStorage kvStore = new InMemoryKeyValueStorage();
+    final KeyValueStorage kvStoreVariables = new InMemoryKeyValueStorage();
+    final BlockchainStorage storage = createStorage(kvStore, kvStoreVariables);
+    final Block genesisBlock = gen.genesisBlock();
+    final DefaultBlockchain blockchain =
+        (DefaultBlockchain)
+            DefaultBlockchain.createMutable(
+                genesisBlock, storage, new NoOpMetricsSystem(), 0, "/data/test");
+
+    final Block zeroDifficultyBlock =
+        gen.block(
+            new BlockDataGenerator.BlockOptions()
+                .setBlockNumber(1L)
+                .setParentHash(genesisBlock.getHash())
+                .setDifficulty(Difficulty.ZERO));
+
+    blockchain.appendBlock(zeroDifficultyBlock, gen.receipts(zeroDifficultyBlock));
+
+    assertThat(storage.getTotalDifficulty(zeroDifficultyBlock.getHash()))
+        .contains(genesisBlock.getHeader().getDifficulty());
   }
 
   @Test

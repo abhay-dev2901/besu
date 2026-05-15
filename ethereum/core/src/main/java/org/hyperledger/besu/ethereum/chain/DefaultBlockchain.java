@@ -78,6 +78,7 @@ public class DefaultBlockchain implements MutableBlockchain {
 
   private volatile BlockHeader chainHeader;
   private volatile Difficulty totalDifficulty;
+  private volatile boolean postMerge;
   private volatile int chainHeadTransactionCount;
   private volatile Long earliestBlockNumber;
 
@@ -119,7 +120,7 @@ public class DefaultBlockchain implements MutableBlockchain {
     final Hash chainHead = blockchainStorage.getChainHead().get();
     chainHeader = blockchainStorage.getBlockHeader(chainHead).get();
     totalDifficulty =
-        getStoredOrInheritedTotalDifficulty(blockchainStorage, chainHeader)
+        getChainHeadTotalDifficulty(blockchainStorage, chainHead)
             .orElseThrow(
                 () ->
                     new IllegalStateException(
@@ -322,7 +323,8 @@ public class DefaultBlockchain implements MutableBlockchain {
     return blockchainStorage
             .getChainHead()
             .flatMap(blockchainStorage::getBlockHeader)
-            .flatMap(chainHead -> getStoredOrInheritedTotalDifficulty(blockchainStorage, chainHead))
+            .flatMap(
+                chainHead -> getChainHeadTotalDifficulty(blockchainStorage, chainHead.getHash()))
             .isPresent()
         && blockchainStorage.getBlockHash(BlockHeader.GENESIS_BLOCK_NUMBER).isPresent();
   }
@@ -485,13 +487,13 @@ public class DefaultBlockchain implements MutableBlockchain {
         .map(
             cache ->
                 Optional.ofNullable(cache.getIfPresent(blockHeaderHash))
-                    .or(() -> getStoredOrInheritedTotalDifficulty(blockHeaderHash))
+                    .or(() -> getStoredOrPostMergeTotalDifficulty(blockHeaderHash))
                     .map(
                         td -> {
                           cache.put(blockHeaderHash, td);
                           return td;
                         }))
-        .orElseGet(() -> getStoredOrInheritedTotalDifficulty(blockHeaderHash));
+        .orElseGet(() -> getStoredOrPostMergeTotalDifficulty(blockHeaderHash));
   }
 
   @Override
@@ -569,6 +571,7 @@ public class DefaultBlockchain implements MutableBlockchain {
     this.chainHeader = blockHeader;
     this.totalDifficulty = totalDifficulty;
     updater.setChainHead(blockHeader.getBlockHash());
+    updater.setChainHeadTotalDifficulty(totalDifficulty);
     updater.commit();
   }
 
@@ -631,6 +634,7 @@ public class DefaultBlockchain implements MutableBlockchain {
     } else {
       blockAddedEvent = updateCanonicalChainData(updater, blockWithReceipts, transactionIndexing);
       if (blockAddedEvent.isNewCanonicalHead()) {
+        updater.setChainHeadTotalDifficulty(td);
         updateCacheForNewCanonicalHead(block, td);
       }
     }
@@ -689,6 +693,7 @@ public class DefaultBlockchain implements MutableBlockchain {
       }
     }
     updater.setChainHead(chainHeader.getBlockHash());
+    updater.setChainHeadTotalDifficulty(totalDifficulty);
     updater.commit();
   }
 
@@ -699,6 +704,7 @@ public class DefaultBlockchain implements MutableBlockchain {
     this.chainHeader = blockHeader;
     this.totalDifficulty = totalDifficulty;
     updater.setChainHead(blockHeader.getBlockHash());
+    updater.setChainHeadTotalDifficulty(totalDifficulty);
     updater.commit();
   }
 
@@ -709,48 +715,36 @@ public class DefaultBlockchain implements MutableBlockchain {
     }
 
     final Difficulty parentTotalDifficulty =
-        getStoredOrInheritedTotalDifficulty(blockHeader.getParentHash())
+        getStoredOrPostMergeTotalDifficulty(blockHeader.getParentHash())
             .orElseThrow(
                 () -> new IllegalStateException("Blockchain is missing total difficulty data."));
     return blockHeader.getDifficulty().add(parentTotalDifficulty);
   }
 
-  private Optional<Difficulty> getStoredOrInheritedTotalDifficulty(final Hash blockHeaderHash) {
+  private Optional<Difficulty> getStoredOrPostMergeTotalDifficulty(final Hash blockHeaderHash) {
     return blockchainStorage
-        .getBlockHeader(blockHeaderHash)
-        .flatMap(header -> getStoredOrInheritedTotalDifficulty(blockchainStorage, header));
+        .getTotalDifficulty(blockHeaderHash)
+        .or(
+            () ->
+                blockchainStorage
+                    .getBlockHeader(blockHeaderHash)
+                    .filter(ignored -> postMerge)
+                    .flatMap(ignored -> blockchainStorage.getChainHeadTotalDifficulty()));
   }
 
-  private static Optional<Difficulty> getStoredOrInheritedTotalDifficulty(
-      final BlockchainStorage blockchainStorage, final BlockHeader blockHeader) {
-    Optional<Difficulty> maybeTotalDifficulty =
-        blockchainStorage.getTotalDifficulty(blockHeader.getHash());
-    if (maybeTotalDifficulty.isPresent()) {
-      return maybeTotalDifficulty;
-    }
-
-    BlockHeader currentHeader = blockHeader;
-    while (currentHeader.getNumber() != BlockHeader.GENESIS_BLOCK_NUMBER
-        && !shouldPersistTotalDifficulty(currentHeader)) {
-      final Optional<BlockHeader> maybeParent =
-          blockchainStorage.getBlockHeader(currentHeader.getParentHash());
-      if (maybeParent.isEmpty()) {
-        return Optional.empty();
-      }
-
-      currentHeader = maybeParent.get();
-      maybeTotalDifficulty = blockchainStorage.getTotalDifficulty(currentHeader.getHash());
-      if (maybeTotalDifficulty.isPresent()) {
-        return maybeTotalDifficulty;
-      }
-    }
-
-    return Optional.empty();
+  private static Optional<Difficulty> getChainHeadTotalDifficulty(
+      final BlockchainStorage blockchainStorage, final Hash chainHeadHash) {
+    return blockchainStorage
+        .getChainHeadTotalDifficulty()
+        .or(() -> blockchainStorage.getTotalDifficulty(chainHeadHash));
   }
 
-  private static boolean shouldPersistTotalDifficulty(final BlockHeader blockHeader) {
-    return blockHeader.getNumber() == BlockHeader.GENESIS_BLOCK_NUMBER
-        || !blockHeader.getDifficulty().isZero();
+  private boolean shouldPersistTotalDifficulty(final BlockHeader blockHeader) {
+    return blockHeader.getNumber() == BlockHeader.GENESIS_BLOCK_NUMBER || !postMerge;
+  }
+
+  public void setPostMerge(final boolean postMerge) {
+    this.postMerge = postMerge;
   }
 
   private void cacheTotalDifficulty(final Hash blockHash, final Difficulty td) {
@@ -770,7 +764,7 @@ public class DefaultBlockchain implements MutableBlockchain {
       difficultyForSyncing = blockHeader.getDifficulty();
     } else if (difficultyForSyncing == null) {
       final Difficulty parentTotalDifficulty =
-          getStoredOrInheritedTotalDifficulty(blockHeader.getParentHash())
+          getStoredOrPostMergeTotalDifficulty(blockHeader.getParentHash())
               .orElseThrow(
                   () ->
                       new IllegalStateException(
@@ -996,12 +990,14 @@ public class DefaultBlockchain implements MutableBlockchain {
       final BlockHeader oldBlockHeader = blockchainStorage.getBlockHeader(blockHash).get();
       final BlockWithReceipts blockWithReceipts = getBlockWithReceipts(oldBlockHeader).get();
       final Block block = blockWithReceipts.getBlock();
+      final Difficulty newChainHeadTotalDifficulty = calculateTotalDifficulty(block.getHeader());
 
       var reorgEvent = handleChainReorg(updater, blockWithReceipts);
+      updater.setChainHeadTotalDifficulty(newChainHeadTotalDifficulty);
       updater.commit();
       blockAddedObservers.forEach(o -> o.onBlockAdded(reorgEvent));
 
-      updateCacheForNewCanonicalHead(block, calculateTotalDifficulty(block.getHeader()));
+      updateCacheForNewCanonicalHead(block, newChainHeadTotalDifficulty);
       return true;
     } catch (final NoSuchElementException e) {
       // Any Optional.get() calls in this block should be present, missing data means data
@@ -1021,10 +1017,11 @@ public class DefaultBlockchain implements MutableBlockchain {
 
     try {
       final BlockWithReceipts blockWithReceipts = getBlockWithReceipts(blockHeader).get();
+      final Difficulty newChainHeadTotalDifficulty = calculateTotalDifficulty(blockHeader);
 
       BlockAddedEvent newHeadEvent = handleNewHead(updater, blockWithReceipts, true);
-      updateCacheForNewCanonicalHead(
-          blockWithReceipts.getBlock(), calculateTotalDifficulty(blockHeader));
+      updater.setChainHeadTotalDifficulty(newChainHeadTotalDifficulty);
+      updateCacheForNewCanonicalHead(blockWithReceipts.getBlock(), newChainHeadTotalDifficulty);
       updater.commit();
       blockAddedObservers.forEach(observer -> observer.onBlockAdded(newHeadEvent));
       return true;
@@ -1096,9 +1093,11 @@ public class DefaultBlockchain implements MutableBlockchain {
       updater.putBlockHeader(hash, genesisBlock.getHeader());
       updater.putBlockBody(hash, genesisBlock.getBody());
       updater.putTransactionReceipts(hash, emptyList());
-      updater.putTotalDifficulty(hash, calculateTotalDifficulty(genesisBlock.getHeader()));
+      final Difficulty genesisTotalDifficulty = calculateTotalDifficulty(genesisBlock.getHeader());
+      updater.putTotalDifficulty(hash, genesisTotalDifficulty);
       updater.putBlockHash(genesisBlock.getHeader().getNumber(), hash);
       updater.setChainHead(hash);
+      updater.setChainHeadTotalDifficulty(genesisTotalDifficulty);
       updater.commit();
     } else {
       // Verify genesis block is consistent with stored blockchain.

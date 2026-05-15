@@ -684,6 +684,15 @@ public abstract class BesuControllerBuilder implements MiningConfigurationOverri
             besuComponent
                 .map(BesuComponent::getBesuPluginContext)
                 .orElse(new BesuPluginContextImpl()));
+    if (genesisConfigOptions.getTerminalTotalDifficulty().isPresent()
+        && blockchain instanceof DefaultBlockchain defaultBlockchain) {
+      final MergeContext mergeContext = protocolContext.getConsensusContext(MergeContext.class);
+      mergeContext.setIsPostMerge(blockchain.getChainHead().getTotalDifficulty());
+      defaultBlockchain.setPostMerge(
+          mergeContext.isPostMerge() || mergeContext.isPostMergeAtGenesis());
+      mergeContext.observeNewIsPostMergeState(
+          (newState, oldState, maybeTotalDifficulty) -> defaultBlockchain.setPostMerge(newState));
+    }
     validateContext(protocolContext);
 
     final int maxMessageSize = ethereumWireProtocolConfiguration.getMaxMessageSize();

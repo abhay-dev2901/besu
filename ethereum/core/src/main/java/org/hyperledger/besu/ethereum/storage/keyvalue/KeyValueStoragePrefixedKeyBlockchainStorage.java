@@ -15,6 +15,7 @@
 package org.hyperledger.besu.ethereum.storage.keyvalue;
 
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.CHAIN_HEAD_HASH;
+import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.CHAIN_HEAD_TOTAL_DIFFICULTY;
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.FINALIZED_BLOCK_HASH;
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.FORK_HEADS;
 import static org.hyperledger.besu.ethereum.chain.VariablesStorage.Keys.SAFE_BLOCK_HASH;
@@ -170,6 +171,11 @@ public class KeyValueStoragePrefixedKeyBlockchainStorage implements BlockchainSt
   public Optional<Difficulty> getTotalDifficulty(final Hash blockHash) {
     return get(TOTAL_DIFFICULTY_PREFIX, blockHash.getBytes())
         .map(b -> Difficulty.wrap(Bytes32.wrap(b, 0)));
+  }
+
+  @Override
+  public Optional<Difficulty> getChainHeadTotalDifficulty() {
+    return variablesStorage.getChainHeadTotalDifficulty();
   }
 
   @Override
@@ -388,6 +394,11 @@ public class KeyValueStoragePrefixedKeyBlockchainStorage implements BlockchainSt
     }
 
     @Override
+    public void setChainHeadTotalDifficulty(final Difficulty totalDifficulty) {
+      variablesUpdater.setChainHeadTotalDifficulty(totalDifficulty);
+    }
+
+    @Override
     public void setChainHead(final Hash blockHash) {
       variablesUpdater.setChainHead(blockHash);
     }
@@ -501,6 +512,7 @@ public class KeyValueStoragePrefixedKeyBlockchainStorage implements BlockchainSt
       remove(VARIABLES_PREFIX, CHAIN_HEAD_HASH.getBytes());
       remove(VARIABLES_PREFIX, FINALIZED_BLOCK_HASH.getBytes());
       remove(VARIABLES_PREFIX, SAFE_BLOCK_HASH.getBytes());
+      remove(VARIABLES_PREFIX, CHAIN_HEAD_TOTAL_DIFFICULTY.getBytes());
       remove(VARIABLES_PREFIX, FORK_HEADS.getBytes());
       remove(Bytes.EMPTY, SEQ_NO_STORE.getBytes());
     }

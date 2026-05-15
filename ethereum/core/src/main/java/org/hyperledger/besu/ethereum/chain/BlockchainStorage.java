@@ -50,6 +50,8 @@ public interface BlockchainStorage {
 
   Optional<Difficulty> getTotalDifficulty(Hash blockHash);
 
+  Optional<Difficulty> getChainHeadTotalDifficulty();
+
   Optional<TransactionLocation> getTransactionLocation(Hash transactionHash);
 
   Updater updater();
@@ -89,6 +91,8 @@ public interface BlockchainStorage {
     void putBlockHash(long blockNumber, Hash blockHash);
 
     void putTotalDifficulty(Hash blockHash, Difficulty totalDifficulty);
+
+    void setChainHeadTotalDifficulty(Difficulty totalDifficulty);
 
     void setChainHead(Hash blockHash);
 

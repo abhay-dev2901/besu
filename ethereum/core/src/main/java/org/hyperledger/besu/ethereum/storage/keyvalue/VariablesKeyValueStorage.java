@@ -66,7 +66,7 @@ public class VariablesKeyValueStorage implements VariablesStorage {
 
   @Override
   public Optional<Difficulty> getChainHeadTotalDifficulty() {
-    return getVariable(CHAIN_HEAD_TOTAL_DIFFICULTY).map(b -> Difficulty.wrap(Bytes32.wrap(b, 0)));
+    return getVariable(CHAIN_HEAD_TOTAL_DIFFICULTY).map(b -> Difficulty.wrap(Bytes32.wrap(b)));
   }
 
   @Override

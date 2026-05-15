@@ -78,7 +78,6 @@ public class DefaultBlockchain implements MutableBlockchain {
 
   private volatile BlockHeader chainHeader;
   private volatile Difficulty totalDifficulty;
-  private volatile boolean postMerge;
   private volatile int chainHeadTransactionCount;
   private volatile Long earliestBlockNumber;
 
@@ -322,9 +321,7 @@ public class DefaultBlockchain implements MutableBlockchain {
     // Run a few basic checks to make sure data looks available and consistent
     return blockchainStorage
             .getChainHead()
-            .flatMap(blockchainStorage::getBlockHeader)
-            .flatMap(
-                chainHead -> getChainHeadTotalDifficulty(blockchainStorage, chainHead.getHash()))
+            .flatMap(chainHead -> getChainHeadTotalDifficulty(blockchainStorage, chainHead))
             .isPresent()
         && blockchainStorage.getBlockHash(BlockHeader.GENESIS_BLOCK_NUMBER).isPresent();
   }
@@ -487,12 +484,7 @@ public class DefaultBlockchain implements MutableBlockchain {
         .map(
             cache ->
                 Optional.ofNullable(cache.getIfPresent(blockHeaderHash))
-                    .or(() -> getStoredOrPostMergeTotalDifficulty(blockHeaderHash))
-                    .map(
-                        td -> {
-                          cache.put(blockHeaderHash, td);
-                          return td;
-                        }))
+                    .or(() -> getStoredOrPostMergeTotalDifficulty(blockHeaderHash)))
         .orElseGet(() -> getStoredOrPostMergeTotalDifficulty(blockHeaderHash));
   }
 
@@ -723,13 +715,12 @@ public class DefaultBlockchain implements MutableBlockchain {
 
   private Optional<Difficulty> getStoredOrPostMergeTotalDifficulty(final Hash blockHeaderHash) {
     return blockchainStorage
-        .getTotalDifficulty(blockHeaderHash)
+        .getBlockHeader(blockHeaderHash)
+        .filter(this::isPostMerge)
+        .flatMap(ignored -> blockchainStorage.getChainHeadTotalDifficulty())
         .or(
             () ->
-                blockchainStorage
-                    .getBlockHeader(blockHeaderHash)
-                    .filter(ignored -> postMerge)
-                    .flatMap(ignored -> blockchainStorage.getChainHeadTotalDifficulty()));
+                blockchainStorage.getTotalDifficulty(blockHeaderHash));
   }
 
   private static Optional<Difficulty> getChainHeadTotalDifficulty(
@@ -740,11 +731,15 @@ public class DefaultBlockchain implements MutableBlockchain {
   }
 
   private boolean shouldPersistTotalDifficulty(final BlockHeader blockHeader) {
-    return blockHeader.getNumber() == BlockHeader.GENESIS_BLOCK_NUMBER || !postMerge;
+    return blockHeader.getNumber() == BlockHeader.GENESIS_BLOCK_NUMBER
+        || !isPostMerge(blockHeader);
   }
 
-  public void setPostMerge(final boolean postMerge) {
-    this.postMerge = postMerge;
+  private boolean isPostMerge(final BlockHeader blockHeader) {
+    return blockchainStorage
+        .getProtocolSchedule()
+        .map(schedule -> schedule.getByBlockHeader(blockHeader).isPoS())
+        .orElse(false);
   }
 
   private void cacheTotalDifficulty(final Hash blockHash, final Difficulty td) {

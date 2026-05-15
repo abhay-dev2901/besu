@@ -22,6 +22,7 @@ import org.hyperledger.besu.ethereum.core.SyncBlockAccessList;
 import org.hyperledger.besu.ethereum.core.SyncBlockBody;
 import org.hyperledger.besu.ethereum.core.SyncTransactionReceipt;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
+import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.block.access.list.BlockAccessList;
 
 import java.util.Collection;
@@ -51,6 +52,10 @@ public interface BlockchainStorage {
   Optional<Difficulty> getTotalDifficulty(Hash blockHash);
 
   Optional<Difficulty> getChainHeadTotalDifficulty();
+
+  default Optional<ProtocolSchedule> getProtocolSchedule() {
+    return Optional.empty();
+  }
 
   Optional<TransactionLocation> getTransactionLocation(Hash transactionHash);
 

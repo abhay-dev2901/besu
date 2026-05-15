@@ -16,6 +16,7 @@ package org.hyperledger.besu.ethereum.chain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -29,6 +30,8 @@ import org.hyperledger.besu.ethereum.core.LogWithMetadata;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockHeaderFunctions;
+import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
+import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueStoragePrefixedKeyBlockchainStorage;
 import org.hyperledger.besu.ethereum.storage.keyvalue.VariablesKeyValueStorage;
 import org.hyperledger.besu.metrics.MetricsSystemFactory;
@@ -1021,13 +1024,13 @@ public class DefaultBlockchainTest {
     final BlockDataGenerator gen = new BlockDataGenerator();
     final KeyValueStorage kvStore = new InMemoryKeyValueStorage();
     final KeyValueStorage kvStoreVariables = new InMemoryKeyValueStorage();
-    final BlockchainStorage storage = createStorage(kvStore, kvStoreVariables);
     final Block genesisBlock = gen.genesisBlock();
+    final ProtocolSchedule protocolSchedule = createProtocolSchedule(true);
+    final BlockchainStorage storage = createStorage(kvStore, kvStoreVariables, protocolSchedule);
     final DefaultBlockchain blockchain =
         (DefaultBlockchain)
             DefaultBlockchain.createMutable(
                 genesisBlock, storage, new NoOpMetricsSystem(), 0, "/data/test");
-    blockchain.setPostMerge(true);
 
     final Block firstPosBlock =
         gen.block(
@@ -1172,6 +1175,26 @@ public class DefaultBlockchainTest {
         new VariablesKeyValueStorage(kvStorageVariables),
         new MainnetBlockHeaderFunctions(),
         false);
+  }
+
+  private BlockchainStorage createStorage(
+      final KeyValueStorage kvStoreChain,
+      final KeyValueStorage kvStorageVariables,
+      final ProtocolSchedule protocolSchedule) {
+    return new KeyValueStoragePrefixedKeyBlockchainStorage(
+        kvStoreChain,
+        new VariablesKeyValueStorage(kvStorageVariables),
+        new MainnetBlockHeaderFunctions(),
+        protocolSchedule,
+        false);
+  }
+
+  private ProtocolSchedule createProtocolSchedule(final boolean isPoS) {
+    final ProtocolSchedule protocolSchedule = mock(ProtocolSchedule.class);
+    final ProtocolSpec protocolSpec = mock(ProtocolSpec.class);
+    when(protocolSchedule.getByBlockHeader(any())).thenReturn(protocolSpec);
+    when(protocolSpec.isPoS()).thenReturn(isPoS);
+    return protocolSchedule;
   }
 
   private DefaultBlockchain createMutableBlockchain(

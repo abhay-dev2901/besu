@@ -35,6 +35,7 @@ import org.hyperledger.besu.ethereum.core.SyncBlockBody;
 import org.hyperledger.besu.ethereum.core.SyncBlockWithReceipts;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
+import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.block.access.list.BlockAccessList;
 import org.hyperledger.besu.metrics.BesuMetricCategory;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
@@ -71,6 +72,7 @@ public class DefaultBlockchain implements MutableBlockchain {
       Comparator.comparing(this::calculateTotalDifficulty);
 
   protected final BlockchainStorage blockchainStorage;
+  private final Optional<ProtocolSchedule> protocolSchedule;
 
   private final Subscribers<BlockAddedObserver> blockAddedObservers = Subscribers.create();
   private final Subscribers<ChainReorgObserver> blockReorgObservers = Subscribers.create();
@@ -98,23 +100,18 @@ public class DefaultBlockchain implements MutableBlockchain {
       final Optional<Block> genesisBlock,
       final BlockchainStorage blockchainStorage,
       final MetricsSystem metricsSystem,
-      final long reorgLoggingThreshold) {
-    this(genesisBlock, blockchainStorage, metricsSystem, reorgLoggingThreshold, null, 0, 0);
-  }
-
-  private DefaultBlockchain(
-      final Optional<Block> genesisBlock,
-      final BlockchainStorage blockchainStorage,
-      final MetricsSystem metricsSystem,
       final long reorgLoggingThreshold,
+      final Optional<ProtocolSchedule> protocolSchedule,
       final String dataDirectory,
       final int numberOfBlocksToCache,
       final int numberOfBlockHeadersToCache) {
     checkNotNull(genesisBlock);
     checkNotNull(blockchainStorage);
     checkNotNull(metricsSystem);
+    checkNotNull(protocolSchedule);
 
     this.blockchainStorage = blockchainStorage;
+    this.protocolSchedule = protocolSchedule;
     genesisBlock.ifPresent(block -> this.setGenesis(block, dataDirectory));
     final Hash chainHead = blockchainStorage.getChainHead().get();
     chainHeader = blockchainStorage.getBlockHeader(chainHead).get();
@@ -266,6 +263,7 @@ public class DefaultBlockchain implements MutableBlockchain {
         blockchainStorage,
         metricsSystem,
         reorgLoggingThreshold,
+        Optional.empty(),
         null,
         0,
         0);
@@ -283,6 +281,7 @@ public class DefaultBlockchain implements MutableBlockchain {
         blockchainStorage,
         metricsSystem,
         reorgLoggingThreshold,
+        Optional.empty(),
         dataDirectory,
         0,
         0);
@@ -302,6 +301,28 @@ public class DefaultBlockchain implements MutableBlockchain {
         blockchainStorage,
         metricsSystem,
         reorgLoggingThreshold,
+        Optional.empty(),
+        dataDirectory,
+        numberOfBlocksToCache,
+        numberOfBlockHeadersToCache);
+  }
+
+  public static MutableBlockchain createMutable(
+      final Block genesisBlock,
+      final BlockchainStorage blockchainStorage,
+      final MetricsSystem metricsSystem,
+      final long reorgLoggingThreshold,
+      final ProtocolSchedule protocolSchedule,
+      final String dataDirectory,
+      final int numberOfBlocksToCache,
+      final int numberOfBlockHeadersToCache) {
+    checkNotNull(genesisBlock);
+    return new DefaultBlockchain(
+        Optional.of(genesisBlock),
+        blockchainStorage,
+        metricsSystem,
+        reorgLoggingThreshold,
+        Optional.of(protocolSchedule),
         dataDirectory,
         numberOfBlocksToCache,
         numberOfBlockHeadersToCache);
@@ -314,7 +335,32 @@ public class DefaultBlockchain implements MutableBlockchain {
     checkArgument(
         validateStorageNonEmpty(blockchainStorage), "Cannot create Blockchain from empty storage");
     return new DefaultBlockchain(
-        Optional.empty(), blockchainStorage, metricsSystem, reorgLoggingThreshold);
+        Optional.empty(),
+        blockchainStorage,
+        metricsSystem,
+        reorgLoggingThreshold,
+        Optional.empty(),
+        null,
+        0,
+        0);
+  }
+
+  public static Blockchain create(
+      final BlockchainStorage blockchainStorage,
+      final MetricsSystem metricsSystem,
+      final long reorgLoggingThreshold,
+      final ProtocolSchedule protocolSchedule) {
+    checkArgument(
+        validateStorageNonEmpty(blockchainStorage), "Cannot create Blockchain from empty storage");
+    return new DefaultBlockchain(
+        Optional.empty(),
+        blockchainStorage,
+        metricsSystem,
+        reorgLoggingThreshold,
+        Optional.of(protocolSchedule),
+        null,
+        0,
+        0);
   }
 
   private static boolean validateStorageNonEmpty(final BlockchainStorage blockchainStorage) {
@@ -718,9 +764,7 @@ public class DefaultBlockchain implements MutableBlockchain {
         .getBlockHeader(blockHeaderHash)
         .filter(this::isPostMerge)
         .flatMap(ignored -> blockchainStorage.getChainHeadTotalDifficulty())
-        .or(
-            () ->
-                blockchainStorage.getTotalDifficulty(blockHeaderHash));
+        .or(() -> blockchainStorage.getTotalDifficulty(blockHeaderHash));
   }
 
   private static Optional<Difficulty> getChainHeadTotalDifficulty(
@@ -731,13 +775,14 @@ public class DefaultBlockchain implements MutableBlockchain {
   }
 
   private boolean shouldPersistTotalDifficulty(final BlockHeader blockHeader) {
-    return blockHeader.getNumber() == BlockHeader.GENESIS_BLOCK_NUMBER
-        || !isPostMerge(blockHeader);
+    return !isPostMerge(blockHeader);
   }
 
   private boolean isPostMerge(final BlockHeader blockHeader) {
-    return blockchainStorage
-        .getProtocolSchedule()
+    if (blockHeader.getNumber() == BlockHeader.GENESIS_BLOCK_NUMBER) {
+      return false;
+    }
+    return protocolSchedule
         .map(schedule -> schedule.getByBlockHeader(blockHeader).isPoS())
         .orElse(false);
   }

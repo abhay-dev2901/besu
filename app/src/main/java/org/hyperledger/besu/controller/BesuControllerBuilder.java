@@ -637,6 +637,7 @@ public abstract class BesuControllerBuilder implements MiningConfigurationOverri
             blockchainStorage,
             metricsSystem,
             reorgLoggingThreshold,
+            protocolSchedule,
             dataDirectory.toString(),
             numberOfBlocksToCache,
             numberOfBlockHeadersToCache);
@@ -685,8 +686,9 @@ public abstract class BesuControllerBuilder implements MiningConfigurationOverri
                 .map(BesuComponent::getBesuPluginContext)
                 .orElse(new BesuPluginContextImpl()));
     if (genesisConfigOptions.getTerminalTotalDifficulty().isPresent()) {
-      final MergeContext mergeContext = protocolContext.getConsensusContext(MergeContext.class);
-      mergeContext.setIsPostMerge(blockchain.getChainHead().getTotalDifficulty());
+      protocolContext
+          .getConsensusContext(MergeContext.class)
+          .setIsPostMerge(blockchain.getChainHead().getTotalDifficulty());
     }
     validateContext(protocolContext);
 

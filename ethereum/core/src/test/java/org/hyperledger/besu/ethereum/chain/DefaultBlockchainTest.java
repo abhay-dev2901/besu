@@ -1030,7 +1030,14 @@ public class DefaultBlockchainTest {
     final DefaultBlockchain blockchain =
         (DefaultBlockchain)
             DefaultBlockchain.createMutable(
-                genesisBlock, storage, new NoOpMetricsSystem(), 0, "/data/test");
+                genesisBlock,
+                storage,
+                new NoOpMetricsSystem(),
+                0,
+                protocolSchedule,
+                "/data/test",
+                0,
+                0);
 
     final Block firstPosBlock =
         gen.block(
@@ -1059,7 +1066,7 @@ public class DefaultBlockchainTest {
     assertThat(storage.getChainHeadTotalDifficulty()).contains(genesisTotalDifficulty);
 
     final Blockchain reloadedBlockchain =
-        DefaultBlockchain.create(storage, new NoOpMetricsSystem(), 0);
+        DefaultBlockchain.create(storage, new NoOpMetricsSystem(), 0, protocolSchedule);
     assertThat(reloadedBlockchain.getChainHeadHash()).isEqualTo(secondPosBlock.getHash());
     assertThat(reloadedBlockchain.getChainHead().getTotalDifficulty())
         .isEqualTo(genesisTotalDifficulty);

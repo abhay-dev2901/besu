@@ -179,11 +179,6 @@ public class KeyValueStoragePrefixedKeyBlockchainStorage implements BlockchainSt
   }
 
   @Override
-  public Optional<ProtocolSchedule> getProtocolSchedule() {
-    return Optional.ofNullable(protocolSchedule);
-  }
-
-  @Override
   public Optional<TransactionLocation> getTransactionLocation(final Hash transactionHash) {
     return get(TRANSACTION_LOCATION_PREFIX, transactionHash.getBytes())
         .map(bytes -> TransactionLocation.readFrom(RLP.input(bytes)));
